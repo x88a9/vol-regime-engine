@@ -27,7 +27,11 @@ def load_data(ticker: str, start: str, end: str) -> pd.Series:
     if data.empty:
         raise ValueError("No data downloaded. Check ticker or date range.")
 
-    close = data["Close"].copy()
+    if isinstance(data.columns, pd.MultiIndex):
+        close = data["Close"][ticker]
+    else:
+        close = data["Close"]
+
     close = close.dropna()
     close.name = ticker
 
