@@ -14,9 +14,10 @@ def compute_vol_target_exposure(
     exposure_t = target_vol / realized_vol_t
     """
 
-    exposure = target_vol / realized_vol
+    exposure = (target_vol / realized_vol).astype(float)
+    exposure = pd.Series(exposure, index=realized_vol.index)
 
-    exposure = exposure.clip(lower=min_exposure, upper=max_exposure)
+    exposure = exposure.clip(min_exposure, max_exposure)
     exposure.name = "vol_target_exposure"
 
     return exposure
