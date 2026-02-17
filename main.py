@@ -13,7 +13,12 @@ from src.metrics import (
 from src.vol_targeting import compute_vol_target_exposure
 from src.ewma import compute_ewma_vol
 from src.momentum import compute_momentum_signal
+from src.grid import run_vol_grid
+from src.portfolio_momentum import run_portfolio_momentum
+from src.turnover import compute_turnover, annualized_turnover
+import pandas as pd
 
+total_turnover = 0
 
 if __name__ == "__main__":
 
@@ -134,3 +139,83 @@ if __name__ == "__main__":
     print_block("Vol Target (EWMA)", ewma_cagr, ewma_vol_metric, ewma_sharpe, ewma_max_dd, ewma_calmar)
     print_block("Momentum (Long/Flat)", mom_cagr, mom_vol, mom_sharpe, mom_max_dd, mom_calmar)
     print_block("Momentum × Vol Target", comb_cagr, comb_vol, comb_sharpe, comb_max_dd, comb_calmar)
+
+
+    assets = {
+        "BTC": compute_log_returns(load_data("BTC-USD", "2018-01-01", "2026-01-01")),
+        "SPY": compute_log_returns(load_data("SPY", "2018-01-01", "2026-01-01")),
+        "GLD": compute_log_returns(load_data("GLD", "2018-01-01", "2026-01-01")),
+    }
+
+    grid_results = run_vol_grid(
+        returns_dict=assets,
+        vol_windows=[20, 30, 60],
+        target_vols=[0.3, 0.5, 0.7]
+    )
+
+    print("\nGRID RESULTS:")
+    print(grid_results.sort_values("sharpe", ascending=False))
+
+        
+    price_dict = {
+        "BTC": load_data("BTC-USD", "2018-01-01", "2026-01-01"),
+        "SPY": load_data("SPY", "2018-01-01", "2026-01-01"),
+        "GLD": load_data("GLD", "2018-01-01", "2026-01-01"),
+    }
+
+    returns_dict = {
+        asset: compute_log_returns(price_dict[asset])
+        for asset in price_dict
+    }
+
+    pm_returns, pm_equity, pm_asset_returns, pm_exposures = run_portfolio_momentum(
+        price_dict,
+        returns_dict,
+        vol_window=30,
+        target_vol=0.3,
+        lookback=252
+    )
+
+    pm_cagr = compute_cagr(pm_equity)
+    pm_vol = compute_annualized_vol(pm_returns)
+    pm_sharpe = compute_sharpe(pm_returns)
+    pm_max_dd = compute_max_drawdown(pm_equity)
+    pm_calmar = compute_calmar(pm_cagr, pm_max_dd)
+
+    print_block("Portfolio Momentum × Vol Target", pm_cagr, pm_vol, pm_sharpe, pm_max_dd, pm_calmar)
+
+    for asset, exposure in pm_exposures.items():
+        turnover_series = compute_turnover(exposure)
+        total_turnover += annualized_turnover(turnover_series)
+
+    avg_turnover = total_turnover / len(pm_exposures)
+
+    print("\n==============================")
+    print("Turnover Analysis")
+    print("==============================")
+    print("Average Annual Turnover:", round(avg_turnover, 2))
+
+    cost_rate = 0.001 
+
+    cost_series = pd.Series(0, index=pm_returns.index)
+
+    for exposure in pm_exposures.values():
+        turnover = compute_turnover(exposure)
+        turnover = turnover.reindex(pm_returns.index).fillna(0)
+        cost_series += turnover * cost_rate
+
+    cost_series = cost_series / len(pm_exposures)
+
+    net_returns = pm_returns - cost_series
+    net_equity = (1 + net_returns).cumprod()
+
+    net_cagr = compute_cagr(net_equity)
+    net_sharpe = compute_sharpe(net_returns)
+    net_max_dd = compute_max_drawdown(net_equity)
+
+    print("\n==============================")
+    print("After Costs (10bps)")
+    print("==============================")
+    print("CAGR:", round(net_cagr, 3))
+    print("Sharpe:", round(net_sharpe, 3))
+    print("Max DD:", round(net_max_dd, 3))
