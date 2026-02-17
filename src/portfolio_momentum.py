@@ -13,7 +13,7 @@ def run_portfolio_momentum(
     target_vol=0.3,
     lookback=252
 ):
-
+    strategy_exposures = {}
     strategy_returns = {}
 
     for asset in price_dict.keys():
@@ -34,8 +34,10 @@ def run_portfolio_momentum(
         aligned_returns = returns.align(combined_exposure, join="inner")[0]
 
         strategy_returns[asset] = aligned_returns * combined_exposure
+        strategy_exposures[asset] = combined_exposure
+
 
     portfolio_returns = equal_weight_portfolio(strategy_returns)
     portfolio_equity = (1 + portfolio_returns).cumprod()
 
-    return portfolio_returns, portfolio_equity
+    return portfolio_returns, portfolio_equity, strategy_returns, strategy_exposures
